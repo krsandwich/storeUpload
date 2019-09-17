@@ -8,14 +8,15 @@
 
 import UIKit
 import Alamofire
+import CommonCrypto
 
 class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIPickerViewDelegate, UIPickerViewDataSource{
     
-    @IBOutlet weak var productQuantity: UITextField!
+    @IBOutlet var productQuantity: UITextField!
     @IBOutlet var productImage: UIImageView!
-    @IBOutlet weak var productName: UITextField!
-    @IBOutlet weak var productPrice: UITextField!
-    @IBOutlet weak var productCatagory: UITextField!
+    @IBOutlet var productName: UITextField!
+    @IBOutlet var productPrice: UITextField!
+    @IBOutlet var productCatagory: UITextField!
     
     var authToken: String = ""
     let catagories = ["", "Resistors", "Capacitors", "Inductors", "Crystals", "Amplifiers", "Digital to Analog Converters", "Analog to Digital Converters", "Clocks and Timers", "Switches", "Memory", "Logic", "Voltage Regulators", "Sensors", "Transistors", "Diodes", "Motors", "Relays", "Buttons", "Actuators", "LEDs", "Displays", "Photodiodes", "Connectors", "Plugs and Sockets", "Microcontrollers", "FPGAs", "Prototyping", "Adhesives", "Plastics", "Metals", "Wood and Particleboard", "Wire", "3D Printing", "Screws", "Class Kits", "Cables", "Tools"]
@@ -57,6 +58,7 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
                        "Screws": 79,
                        "Class Kits": 76,
                        "Cables": 85]
+    
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -109,62 +111,91 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
         let price: String = productPrice?.text ?? "0.0"
         let catagory: String = productCatagory?.text ?? ""
         let catagoryID: Int = catagoryIDs[catagory] ?? 2
+        let sku: String = md5Hash(str: name)
+        
+        debugPrint(sku)
         
         let head: HTTPHeaders = [
             "Authorization": "Bearer \(self.authToken)",
             "Content-Type": "application/json"
         ]
-
-        let parameters: Parameters = [
-            "product": [
-                "type_id": "simple",
-                "attribute_set_id": 4,
-                "extension_attributes": ["stock_item": ["qty": Int(quantity) ?? 0, "is_in_stock": true]],
-                "sku": name,
-                "name": name,
-                "price": Float(price) ?? 0.0,
-                "media_gallery_entries": [
-                    [
-                        "content": [
-                            "base64_encoded_data": productImage.image?.jpegData(compressionQuality: 0.1)?.base64EncodedString(),
-                            "type": "image/jpeg",
-                            "name": "\(name).jpg"
-                        ],
-                        "disabled": false,
-                        "label": name,
-                        "media_type": "image",
-                        "position": 0,
-                        "types": ["thumbnail", "small_image", "image", "swatch_image"],
+        
+        var existingQuantity = 0;
+        
+        Alamofire.request("https://makerstore.stanford.edu/rest/V1/stockStatuses/\(sku)", method: .get, parameters: ["scopeId": 0], encoding: JSONEncoding.default, headers: head).responseJSON{ response in
+            //debugPrint(response)
+            if response.result.isSuccess {
+                let data = response.result.value
+                let responseObject = data as! NSDictionary
+                if let existingObj = responseObject["qty"] as? NSInteger{
+                    existingQuantity = existingObj
+                }else{
+                    existingQuantity = 0
+                }
+            }
+            
+            let qty = existingQuantity + (Int(quantity) ?? 0)
+            print(qty)
+            
+            let parameters: Parameters = [
+                "product": [
+                    "type_id": "simple",
+                    "attribute_set_id": 4,
+                    "extension_attributes": ["stock_item": ["qty": qty, "is_in_stock": true]],
+                    "sku": sku,
+                    "name": name,
+                    "price": Float(price) ?? 0.0,
+                    "media_gallery_entries": [
+                        [
+                            "content": [
+                                "base64_encoded_data": self.productImage.image?.jpegData(compressionQuality: 0.1)?.base64EncodedString(),
+                                "type": "image/jpeg",
+                                "name": "\(name).jpg"
+                            ],
+                            "disabled": false,
+                            "label": name,
+                            "media_type": "image",
+                            "position": 0,
+                            "types": ["thumbnail", "small_image", "image", "swatch_image"],
+                        ]
                     ]
                 ]
             ]
-        ]
-
-        Alamofire.request("https://makerstore.stanford.edu/rest/V1/products", method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: head).responseJSON{ response in
-            self.removeSpinnerView()
-            if response.result.isSuccess {
-                debugPrint(response)
-                self.moveProduct(catagory: catagoryID, product: name)
-                let alertController = UIAlertController(title: "Product Uploaded!", message: "\"\(name)\" has been successfully uploaded to the store.", preferredStyle: .alert)
-                alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: { (alertAction) -> Void in
-                    self.performSegue(withIdentifier: "returnHome", sender: self)
-                }))
-                self.present(alertController, animated: true, completion: nil)
-            } else{
-                let alertController = UIAlertController(title: "Error", message: "Something went wrong. Please check your entries and internet connection.", preferredStyle: .alert)
-                alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                self.present(alertController, animated: true, completion: nil)
+            
+            Alamofire.request("https://makerstore.stanford.edu/rest/V1/products", method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: head).responseJSON{ response in
+                self.removeSpinnerView()
+                if response.result.isSuccess {
+                    //debugPrint(response)
+                    self.moveProduct(catagory: catagoryID, product: name, sku: sku)
+                    let alertController = UIAlertController(title: "Product Uploaded!", message: "\"\(name)\" has been successfully uploaded to the store.", preferredStyle: .alert)
+                    alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: { (alertAction) -> Void in
+                        self.performSegue(withIdentifier: "returnHome", sender: self)
+                    }))
+                    self.present(alertController, animated: true, completion: nil)
+                } else{
+                    let alertController = UIAlertController(title: "Error", message: "Something went wrong. Please check your entries and internet connection.", preferredStyle: .alert)
+                    alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                    self.present(alertController, animated: true, completion: nil)
+                }
             }
+
+
         }
+        
+
+        
+        
+        
+        
     }
     
-    func moveProduct(catagory: Int, product: String) {
+    func moveProduct(catagory: Int, product: String, sku: String) {
         let head: HTTPHeaders = [
             "Authorization": "Bearer \(self.authToken)",
             "Content-Type": "application/json"
         ]
         let params: Parameters = [
-            "productLink": ["sku": product,
+            "productLink": ["sku": sku,
                             "position": 0,
                             "category_id": String(catagory)]]
         let makerstore_request: String = "https://makerstore.stanford.edu/rest/V1/categories/" + String(catagory) + "/products";
@@ -182,7 +213,23 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
         }
     }
     
-    
+    func getExistingProduct(sku: String,head: HTTPHeaders, completion : (Int)->()){
+        var existingQuantity = 0
+        Alamofire.request("https://makerstore.stanford.edu/rest/V1/stockStatuses/\(sku)", method: .get, parameters: ["scopeId": 0], encoding: JSONEncoding.default, headers: head).responseJSON{ response in
+            //debugPrint(response)
+            if response.result.isSuccess {
+                let data = response.result.value
+                let responseObject = data as! NSDictionary
+                existingQuantity = responseObject["qty"] as! NSInteger
+                //print(existingQuantity)
+                print("hello world")
+                
+            }
+            
+        }
+            
+            completion(existingQuantity)
+        }//End of Json request
     
     
     
@@ -248,6 +295,39 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
         let img:UIImage = UIImage(cgImage: cgimg)
         
         return img
+    }
+ 
+    /**
+     * Example MD5 Has using CommonCrypto
+     * CC_MD5 API exposed from CommonCrypto-60118.50.1:
+     * https://opensource.apple.com/source/CommonCrypto/CommonCrypto-60118.50.1/include/CommonDigest.h.auto.html
+     **/
+    func md5Hash (str: String) -> String {
+        if let strData = str.data(using: String.Encoding.utf8) {
+            /// #define CC_MD5_DIGEST_LENGTH    16          /* digest length in bytes */
+            /// Creates an array of unsigned 8 bit integers that contains 16 zeros
+            var digest = [UInt8](repeating: 0, count:Int(CC_MD5_DIGEST_LENGTH))
+            
+            /// CC_MD5 performs digest calculation and places the result in the caller-supplied buffer for digest (md)
+            /// Calls the given closure with a pointer to the underlying unsafe bytes of the strData’s contiguous storage.
+            strData.withUnsafeBytes {
+                // CommonCrypto
+                // extern unsigned char *CC_MD5(const void *data, CC_LONG len, unsigned char *md) --|
+                // OpenSSL                                                                          |
+                // unsigned char *MD5(const unsigned char *d, size_t n, unsigned char *md)        <-|
+                CC_MD5($0.baseAddress, UInt32(strData.count), &digest)
+            }
+            
+            
+            var md5String = ""
+            /// Unpack each byte in the digest array and add them to the md5String
+            for byte in digest {
+                md5String += String(format:"%02x", UInt8(byte))
+            }
+        
+            return md5String
+        }
+        return ""
     }
     
 }
