@@ -106,7 +106,10 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
         self.createSpinnerView()
         
         print(self.authToken)
-        let name: String = productName?.text ?? ""
+        
+        var name: String = productName?.text ?? ""
+        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        
         let quantity: String = productQuantity?.text ?? "0"
         let price: String = productPrice?.text ?? "0.0"
         let catagory: String = productCatagory?.text ?? ""
@@ -123,7 +126,9 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
         var existingQuantity = 0;
         
         Alamofire.request("https://makerstore.stanford.edu/rest/V1/stockStatuses/\(sku)", method: .get, parameters: ["scopeId": 0], encoding: JSONEncoding.default, headers: head).responseJSON{ response in
-            //debugPrint(response)
+            
+            debugPrint(response)
+            
             if response.result.isSuccess {
                 let data = response.result.value
                 let responseObject = data as! NSDictionary
@@ -135,7 +140,6 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
             }
             
             let qty = existingQuantity + (Int(quantity) ?? 0)
-            print(qty)
             
             let parameters: Parameters = [
                 "product": [
@@ -165,7 +169,7 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
             Alamofire.request("https://makerstore.stanford.edu/rest/V1/products", method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: head).responseJSON{ response in
                 self.removeSpinnerView()
                 if response.result.isSuccess {
-                    //debugPrint(response)
+                    debugPrint(response)
                     self.moveProduct(catagory: catagoryID, product: name, sku: sku)
                     let alertController = UIAlertController(title: "Product Uploaded!", message: "\"\(name)\" has been successfully uploaded to the store.", preferredStyle: .alert)
                     alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: { (alertAction) -> Void in
@@ -178,15 +182,7 @@ class AddProductScreen: AltBGView , UIImagePickerControllerDelegate, UINavigatio
                     self.present(alertController, animated: true, completion: nil)
                 }
             }
-
-
         }
-        
-
-        
-        
-        
-        
     }
     
     func moveProduct(catagory: Int, product: String, sku: String) {
